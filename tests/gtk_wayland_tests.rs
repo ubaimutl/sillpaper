@@ -330,7 +330,13 @@ fn test_gtk_editor_tab_sync_formatting_focus_search_and_large_doc() {
     );
     win.close();
 
-    let link_doc = Document::from_blocks(vec![Block::paragraph_with_text("Visit Sillpaper now.")]);
+    let link_label = "Sillpaper";
+    let link_url = "https://github.com/ubaimutl/sillpaper";
+    let link_start = 6;
+    let link_end = link_start + link_label.chars().count() as i32;
+    let link_doc = Document::from_blocks(vec![Block::paragraph_with_text(format!(
+        "Visit {link_label} now."
+    ))]);
     let toolbar = sillpaper::ui::floating_toolbar::FloatingToolbar::new();
     let hide_count = std::rc::Rc::new(std::cell::Cell::new(0u32));
     let hide_c = hide_count.clone();
@@ -373,17 +379,17 @@ fn test_gtk_editor_tab_sync_formatting_focus_search_and_large_doc() {
     while main_ctx.iteration(false) {}
 
     let lbuf = link_tab.view.buffer();
-    let s_it = lbuf.iter_at_offset(6);
-    let e_it = lbuf.iter_at_offset(16);
+    let s_it = lbuf.iter_at_offset(link_start);
+    let e_it = lbuf.iter_at_offset(link_end);
     lbuf.select_range(&s_it, &e_it);
-    link_tab
-        .state
-        .borrow_mut()
-        .set_selection(Selection::range(DocPos::new(0, 6), DocPos::new(0, 16)));
+    link_tab.state.borrow_mut().set_selection(Selection::range(
+        DocPos::new(0, link_start as usize),
+        DocPos::new(0, link_end as usize),
+    ));
 
     assert!(link_tab.begin_pending_link().is_some());
     toolbar.open_link_input(None);
-    let collapsed = lbuf.iter_at_offset(16);
+    let collapsed = lbuf.iter_at_offset(link_end);
     lbuf.place_cursor(&collapsed);
     while main_ctx.iteration(false) {}
 
@@ -401,7 +407,7 @@ fn test_gtk_editor_tab_sync_formatting_focus_search_and_large_doc() {
         "Override selection rects vanished when GtkTextBuffer collapsed selection!"
     );
 
-    link_tab.commit_pending_link(Some("https://github.com/ubaimutl/sillpaper".into()));
+    link_tab.commit_pending_link(Some(link_url.into()));
     assert!(!link_tab.has_pending_link());
     assert!(
         link_tab.state.borrow().doc.blocks[0]
@@ -410,8 +416,8 @@ fn test_gtk_editor_tab_sync_formatting_focus_search_and_large_doc() {
             .any(|i| matches!(
                 i,
                 sillpaper::model::Inline::Text(r)
-                    if r.text == "Sillpaper"
-                        && r.style.link.as_deref() == Some("https://github.com/ubaimutl/sillpaper")
+                    if r.text == link_label
+                        && r.style.link.as_deref() == Some(link_url)
             ))
     );
     link_win.close();
@@ -421,9 +427,9 @@ fn test_gtk_editor_tab_sync_formatting_focus_search_and_large_doc() {
             "Heading Title That Wraps Cleanly Across Two Lines",
         ))]),
         Block::paragraph_with_text(
-            "Deployment-Setups (Git, Docker, Cloudflare sowie cPanel/DirectAdmin). \
-             Für „Vibe Coding“ nutze ich Claude Code und OpenAI Codex, um Prototypen \
-             und kleine Tools zügig lauffähig zu machen und dann sauber zu stabilisieren.",
+            "Am frühen Morgen öffnet der Wochenmarkt auf dem alten Marktplatz. \
+             Zwischen den Ständen stehen kleine Gruppen im Gespräch, während die Händler \
+             frisches Obst, Brot und Blumen aus den umliegenden Dörfern anbieten.",
         ),
         Block::paragraph_with_text("WordPress ist mir aus der Praxis vertraut."),
         Block::paragraph_with_text("مرحبا hello عالم test mixed BiDi line"),
