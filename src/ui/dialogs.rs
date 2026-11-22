@@ -288,6 +288,7 @@ pub fn show_writing_goal_dialog(
 
     let row = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
     let spin = gtk4::SpinButton::with_range(10.0, 500_000.0, 50.0);
+    spin.set_width_chars(7);
     spin.set_value(current.map(|g| g.target as f64).unwrap_or(500.0));
     spin.set_hexpand(true);
 

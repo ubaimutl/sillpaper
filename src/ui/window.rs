@@ -548,6 +548,9 @@ impl SillpaperWindow {
     fn open_settings_drawer(&self) {
         self.floating_toolbar.hide();
         self.ensure_settings_panel_built();
+        if let Some(panel) = self.settings_panel.borrow().as_ref() {
+            panel.reset_to_page();
+        }
         self.sidebar_stack.set_visible_child_name("settings");
         self.split_view.set_show_sidebar(true);
         self.reveal_chrome();

@@ -321,7 +321,6 @@ mod imp {
         pub focus_opacity: Cell<f32>,
         pub override_selection: Cell<Option<(i32, i32)>>,
         pub ghost_text: RefCell<Option<(i32, String)>>,
-        pub column_inset: Cell<i32>,
     }
 
     impl Default for RichTextView {
@@ -334,7 +333,6 @@ mod imp {
                 focus_opacity: Cell::new(1.0),
                 override_selection: Cell::new(None),
                 ghost_text: RefCell::new(None),
-                column_inset: Cell::new(24),
             }
         }
     }
@@ -421,8 +419,8 @@ mod imp {
                     layout.set_single_paragraph_mode(true);
                     layout.set_ellipsize(pango::EllipsizeMode::End);
 
-                    let col_left = self.column_inset.get().max(view.left_margin());
-                    let col_right = self.column_inset.get().max(view.right_margin());
+                    let col_left = view.left_margin();
+                    let col_right = view.right_margin();
                     let right_edge = (view.width() - col_right).max(col_left + 80);
                     let avail_inline = right_edge - loc.x() - 4;
                     let ghost_color = scale_alpha(colors.text, 0.42);
@@ -485,8 +483,8 @@ mod imp {
                     (last_iter.line().max(0) as usize).min(decorations.len().saturating_sub(1));
 
                 let view_width = view.width() as f32;
-                let base_left = self.column_inset.get().max(view.left_margin()) as f32;
-                let base_right = self.column_inset.get().max(view.right_margin()) as f32;
+                let base_left = view.left_margin() as f32;
+                let base_right = view.right_margin() as f32;
                 let content_width = (view_width - base_left - base_right).max(120.0);
 
                 for (line_idx, deco) in decorations
@@ -677,15 +675,13 @@ impl RichTextView {
     }
 
     pub fn set_column_inset(&self, inset: i32) {
-        let clamped = inset.max(0);
-        if self.imp().column_inset.get() != clamped {
-            self.imp().column_inset.set(clamped);
-            self.queue_draw();
-        }
+        let inset = inset.max(0);
+        self.set_left_margin(inset);
+        self.set_right_margin(inset);
     }
 
     pub fn column_inset(&self) -> i32 {
-        self.imp().column_inset.get().max(self.left_margin())
+        self.left_margin()
     }
 
     pub fn selection_rects(&self) -> Vec<graphene::Rect> {

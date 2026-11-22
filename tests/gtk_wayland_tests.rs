@@ -231,7 +231,8 @@ fn test_gtk_editor_tab_sync_formatting_focus_search_and_large_doc() {
         .tag_table()
         .lookup("bullet_0")
         .unwrap();
-    assert_eq!(b0_tag.left_margin(), 44);
+    assert!(b0_tag.is_accumulative_margin());
+    assert_eq!(paste_tab.view.left_margin() + b0_tag.left_margin(), 44);
 
     let css_provider = gtk4::CssProvider::new();
     let css_err = std::rc::Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
@@ -247,6 +248,96 @@ fn test_gtk_editor_tab_sync_formatting_focus_search_and_large_doc() {
         "Sillpaper CSS parse errors: {:?}",
         css_err.borrow()
     );
+
+    let settings_dir =
+        std::env::temp_dir().join(format!("sillpaper_settings_{}", std::process::id()));
+    let settings = sillpaper::ui::preferences_ui::PreferencesPanel::new(
+        &Preferences {
+            words_per_minute: 2000,
+            ..Preferences::default()
+        },
+        &[],
+        sillpaper::config::RendererBackend::Auto,
+        Rc::new(RefCell::new(sillpaper::extensions::ExtensionManager::new(
+            settings_dir,
+        ))),
+        |_| {},
+        || {},
+    );
+    let settings_scroll = settings
+        .root
+        .last_child()
+        .and_downcast::<gtk4::ScrolledWindow>()
+        .unwrap();
+    let settings_viewport = settings_scroll
+        .child()
+        .and_downcast::<gtk4::Viewport>()
+        .unwrap();
+    let sections = settings_viewport.child().unwrap().observe_children();
+    let section = |index| {
+        sections
+            .item(index)
+            .and_downcast::<gtk4::Expander>()
+            .unwrap()
+    };
+    let expanded_count = || {
+        (0..sections.n_items())
+            .filter(|&index| section(index).is_expanded())
+            .count()
+    };
+    assert_eq!(sections.n_items(), 6);
+    assert_eq!(section(0).label().as_deref(), Some("Page"));
+    assert!(section(0).is_expanded());
+    assert_eq!(expanded_count(), 1);
+    let counting = section(3);
+    assert_eq!(counting.label().as_deref(), Some("Counting & saving"));
+    counting.set_expanded(true);
+    assert!(!section(0).is_expanded());
+    assert_eq!(expanded_count(), 1);
+
+    let settings_window = gtk4::Window::builder()
+        .default_width(350)
+        .default_height(400)
+        .child(&settings.root)
+        .build();
+    settings_window.add_css_class("sillpaper-window");
+    let settings_display = settings.root.display();
+    gtk4::style_context_add_provider_for_display(
+        &settings_display,
+        &css_provider,
+        gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+    );
+    settings_window.present();
+    let settings_context = gtk4::glib::MainContext::default();
+    let settings_start = Instant::now();
+    while settings_start.elapsed() < std::time::Duration::from_millis(120) {
+        while settings_context.iteration(false) {}
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let counting_content = counting.child().unwrap();
+    let mut row = counting_content.first_child();
+    let reading_speed = loop {
+        let widget = row.expect("Reading speed control should be in Counting & saving");
+        if let Some(spin) = widget.last_child().and_downcast::<gtk4::SpinButton>() {
+            break spin;
+        }
+        row = widget.next_sibling();
+    };
+    let editable = reading_speed
+        .delegate()
+        .and_downcast::<gtk4::Text>()
+        .unwrap();
+    assert_eq!(reading_speed.text(), "2000");
+    assert!(
+        editable.width()
+            >= reading_speed
+                .create_pango_layout(Some("2000"))
+                .pixel_size()
+                .0,
+        "The full reading speed value should fit inside the input"
+    );
+    settings_window.close();
+    gtk4::style_context_remove_provider_for_display(&settings_display, &css_provider);
 
     let tw_blocks: Vec<Block> = (0..60)
         .map(|i| Block::paragraph_with_text(format!("Typewriter paragraph line number {i}.")))
@@ -693,7 +784,11 @@ for line in sys.stdin:
     ext_tab.clear_ghost_suggestion();
     assert!(ext_tab.view.ghost_text().is_none());
 
-    let shared = sillpaper::ui::editor_tab::create_shared_tag_table(&def_prefs);
+    let narrow = Preferences {
+        text_width: sillpaper::config::TextWidth::Narrow,
+        ..def_prefs.clone()
+    };
+    let shared = sillpaper::ui::editor_tab::create_shared_tag_table(&narrow);
     let dir = std::env::temp_dir().join(format!("sillpaper_shared_tbl_{}", std::process::id()));
     let storage = Rc::new(StorageManager::new(dir));
     let mk_cb = || EditorTabCallbacks {
@@ -714,7 +809,7 @@ for line in sys.stdin:
         false,
         None,
         0,
-        Rc::new(RefCell::new(def_prefs.clone())),
+        Rc::new(RefCell::new(narrow.clone())),
         storage.clone(),
         mk_cb(),
         Some(&shared),
@@ -726,12 +821,44 @@ for line in sys.stdin:
         false,
         None,
         0,
-        Rc::new(RefCell::new(def_prefs.clone())),
+        Rc::new(RefCell::new(narrow.clone())),
         storage,
         mk_cb(),
         Some(&shared),
     );
     assert_eq!(t_a.view.buffer().tag_table(), t_b.view.buffer().tag_table());
+
+    let wide_window = gtk4::Window::builder()
+        .default_width(1200)
+        .default_height(400)
+        .child(&t_a.root)
+        .build();
+    let small_window = gtk4::Window::builder()
+        .default_width(680)
+        .default_height(400)
+        .child(&t_b.root)
+        .build();
+    wide_window.present();
+    small_window.present();
+    let wait_start = Instant::now();
+    while wait_start.elapsed() < std::time::Duration::from_millis(120) {
+        while main_ctx.iteration(false) {}
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert!(t_a.scrolled.width() > t_b.scrolled.width());
+    t_a.recompute_canvas_margins();
+    t_b.recompute_canvas_margins();
+    for tab in [&t_a, &t_b] {
+        let start = tab.view.buffer().start_iter();
+        let inset = tab.view.iter_location(&start).x();
+        let column_width = tab.scrolled.width() - 2 * inset;
+        assert!(
+            (440..=441).contains(&column_width),
+            "Narrow text should stay centered at 440px (got {column_width}px)"
+        );
+    }
+    wide_window.close();
+    small_window.close();
 
     let banner = sillpaper::ui::extension_overlays::ExtensionHintBanner::new();
     let dismissed_ids = Rc::new(RefCell::new(Vec::<String>::new()));

@@ -761,6 +761,23 @@ window.sillpaper-window .sillpaper-settings-panel button.sillpaper-settings-nav:
     color: {chrome_fg};
 }}
 
+window.sillpaper-window .sillpaper-settings-category {{
+    border-bottom: 1px solid {chrome_rim};
+}}
+
+window.sillpaper-window .sillpaper-settings-category > box > title {{
+    padding: 10px 18px;
+    min-height: 20px;
+}}
+
+window.sillpaper-window .sillpaper-settings-category > box > title:hover {{
+    background-color: {control_bg_hover};
+}}
+
+window.sillpaper-window .sillpaper-settings-category > box > title > label {{
+    font-weight: 600;
+}}
+
 window.sillpaper-window .sillpaper-settings-section {{
     padding: 12px 18px 20px;
 }}
@@ -945,23 +962,13 @@ window.sillpaper-window .sillpaper-settings-panel dropdown > button {{
     padding: 0 10px;
 }}
 
-window.sillpaper-window .sillpaper-settings-panel dropdown.sillpaper-section-picker > button {{
-    min-height: 28px;
-    border: none;
-    border-radius: 99px;
-}}
-
-window.sillpaper-window .sillpaper-settings-panel dropdown.sillpaper-section-picker > button:hover {{
-    background-color: {control_bg_hover};
-}}
-
 window.sillpaper-window .sillpaper-settings-panel entry,
 window.sillpaper-window .sillpaper-settings-panel passwordentry {{
     padding: 0 10px;
 }}
 
 window.sillpaper-window .sillpaper-settings-panel spinbutton {{
-    padding: 0;
+    padding: 0 2px 0 10px;
 }}
 
 window.sillpaper-window .sillpaper-settings-panel dropdown > button label,
@@ -974,14 +981,14 @@ window.sillpaper-window .sillpaper-settings-panel entry > text,
 window.sillpaper-window .sillpaper-settings-panel passwordentry > text,
 window.sillpaper-window .sillpaper-settings-panel spinbutton > text {{
     color: {chrome_fg};
-    padding: 0 10px;
+    font-size: 15px;
+    padding: 4px 0;
     margin: 0;
-    min-height: 34px;
+    min-height: 0;
 }}
 
-window.sillpaper-window .sillpaper-settings-panel entry > text,
-window.sillpaper-window .sillpaper-settings-panel passwordentry > text {{
-    padding: 0;
+window.sillpaper-window .sillpaper-settings-panel spinbutton > text {{
+    font-weight: 500;
 }}
 
 window.sillpaper-window .sillpaper-settings-panel spinbutton > button {{

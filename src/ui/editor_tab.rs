@@ -357,9 +357,6 @@ impl EditorTab {
             BASE_SIDE_MARGIN
         };
 
-        if raw_vw > 1 {
-            update_tag_column_margins(&self.view.buffer().tag_table(), side_inset);
-        }
         self.view.set_column_inset(side_inset);
         if raw_vw > 1 || raw_vh > 1 {
             self.resize_inline_images(raw_vw, raw_vh, col_px);
@@ -2936,21 +2933,28 @@ fn populate_tag_table(table: &gtk4::TextTagTable, prefs: &Preferences) {
         .build());
     add(gtk4::TextTag::builder()
         .name("blockquote")
+        .accumulative_margin(true)
+        .left_margin(28)
+        .right_margin(18)
         .style(pango::Style::Italic)
         .build());
     add(gtk4::TextTag::builder()
         .name("codeblock")
+        .accumulative_margin(true)
+        .left_margin(18)
+        .right_margin(18)
         .family("Monospace")
         .scale(0.84)
         .build());
 
     for d in 0..=4u8 {
-        add(gtk4::TextTag::builder()
-            .name(list_tag_name(false, d))
-            .build());
-        add(gtk4::TextTag::builder()
-            .name(list_tag_name(true, d))
-            .build());
+        for ordered in [false, true] {
+            add(gtk4::TextTag::builder()
+                .name(list_tag_name(ordered, d))
+                .accumulative_margin(true)
+                .left_margin(20 * (i32::from(d) + 1))
+                .build());
+        }
     }
 
     add(gtk4::TextTag::builder()
@@ -3010,51 +3014,11 @@ fn update_tag_styles(buffer: &gtk4::TextBuffer, prefs: &Preferences) {
     update_tag_styles_table(&buffer.tag_table(), prefs);
 }
 
-fn update_tag_column_margins(table: &gtk4::TextTagTable, side_inset: i32) {
-    let inset = side_inset.max(BASE_SIDE_MARGIN);
-    if let Some(p) = table.lookup("paragraph")
-        && p.is_left_margin_set()
-        && p.left_margin() == inset
-        && p.right_margin() == inset
-    {
-        return;
-    }
-    for name in ["paragraph", "h1", "h2", "h3", "h4", "hr_block"] {
-        if let Some(t) = table.lookup(name) {
-            t.set_left_margin(inset);
-            t.set_right_margin(inset);
-        }
-    }
-    if let Some(t) = table.lookup("blockquote") {
-        t.set_left_margin(inset + 28);
-        t.set_right_margin(inset + 18);
-    }
-    if let Some(t) = table.lookup("codeblock") {
-        t.set_left_margin(inset + 18);
-        t.set_right_margin(inset + 18);
-    }
-    for d in 0..=4u8 {
-        let indent = inset + 20 * (d as i32 + 1);
-        for ordered in [false, true] {
-            if let Some(t) = table.lookup(list_tag_name(ordered, d)) {
-                t.set_left_margin(indent);
-                t.set_right_margin(inset);
-            }
-        }
-    }
-}
-
 pub fn update_tag_styles_table(table: &gtk4::TextTagTable, prefs: &Preferences) {
     let pal = resolve_palette(prefs);
     let ls = prefs.line_spacing.factor();
     let h_ls = prefs.line_spacing.heading_factor();
     let p_below = if prefs.paragraph_margins { 12 } else { 0 };
-    let current_inset = table
-        .lookup("paragraph")
-        .filter(|t| t.is_left_margin_set())
-        .map(|t| t.left_margin().max(BASE_SIDE_MARGIN))
-        .unwrap_or(BASE_SIDE_MARGIN);
-
     if let Some(t) = table.lookup("paragraph") {
         t.set_line_height(ls);
         t.set_pixels_above_lines(0);
@@ -3091,8 +3055,6 @@ pub fn update_tag_styles_table(table: &gtk4::TextTagTable, prefs: &Preferences) 
             }
         }
     }
-
-    update_tag_column_margins(table, current_inset);
 
     if let Some(t) = table.lookup("code") {
         t.set_background_rgba(None);

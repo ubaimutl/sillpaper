@@ -13,6 +13,8 @@ use std::rc::Rc;
 pub struct PreferencesPanel {
     pub root: gtk4::Box,
     pub(super) header: gtk4::Box,
+    scroll: gtk4::ScrolledWindow,
+    page_section: gtk4::Expander,
     font_size_label: gtk4::Label,
     focus_check: gtk4::CheckButton,
     typewriter_check: gtk4::CheckButton,
@@ -47,11 +49,13 @@ impl PreferencesPanel {
         title.add_css_class("sillpaper-settings-title");
         header.append(&title);
 
-        let sections = gtk4::Stack::new();
-        sections.set_vexpand(true);
-        sections.set_hhomogeneous(false);
-        sections.set_vhomogeneous(false);
-        let categories = gtk4::StringList::new(&[]);
+        let sections = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+        let scroll = gtk4::ScrolledWindow::new();
+        scroll.add_css_class("sillpaper-settings-scroll");
+        scroll.set_vexpand(true);
+        scroll.set_overlay_scrolling(true);
+        scroll.set_policy(gtk4::PolicyType::Never, gtk4::PolicyType::Automatic);
+        scroll.set_child(Some(&sections));
 
         let emit = {
             let p = prefs.clone();
@@ -64,7 +68,8 @@ impl PreferencesPanel {
             }
         };
 
-        let content = settings_section(&sections, &categories, "Page");
+        let (page_section, content) = settings_section(&sections, "Page");
+        page_section.set_expanded(true);
 
         content.append(&sub_label("Theme"));
         let theme_group = gtk4::Box::new(gtk4::Orientation::Horizontal, 2);
@@ -78,6 +83,7 @@ impl PreferencesPanel {
         let custom_bg_entry = gtk4::Entry::new();
         custom_bg_entry.set_text(&initial.custom_theme_bg);
         custom_bg_entry.set_placeholder_text(Some("#FAFDFF"));
+        custom_bg_entry.set_width_chars(8);
         custom_bg_entry.set_hexpand(true);
         let custom_bg_apply = gtk4::Button::with_label("Apply");
         custom_bg_apply.add_css_class("sillpaper-target-btn");
@@ -331,7 +337,7 @@ impl PreferencesPanel {
         }
         content.append(&ls_group);
 
-        let content = settings_section(&sections, &categories, "Focus");
+        let (_, content) = settings_section(&sections, "Focus");
 
         let focus_check = add_check_row_with_hint(
             &content,
@@ -419,7 +425,7 @@ impl PreferencesPanel {
             "Tip: Hold Ctrl briefly anytime to view the shortcut cheatsheet.",
         ));
 
-        let content = settings_section(&sections, &categories, "Formatting");
+        let (_, content) = settings_section(&sections, "Formatting");
 
         add_check_row(
             &content,
@@ -536,7 +542,7 @@ impl PreferencesPanel {
         }
         append_control(&content, "Text direction", &dir_group);
 
-        let content = settings_section(&sections, &categories, "Counting & saving");
+        let (_, content) = settings_section(&sections, "Counting & saving");
 
         let counter_check = add_check_row_with_hint(
             &content,
@@ -572,12 +578,8 @@ impl PreferencesPanel {
             |p, v| p.show_reading_time = v,
         );
 
-        let wpm_row = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
-        wpm_row.set_margin_top(4);
-        let wpm_lbl = gtk4::Label::new(Some("Reading speed (WPM)"));
-        wpm_lbl.set_xalign(0.0);
-        wpm_lbl.set_hexpand(true);
         let wpm_spin = gtk4::SpinButton::with_range(50.0, 2000.0, 10.0);
+        wpm_spin.set_width_chars(5);
         wpm_spin.set_value(initial.words_per_minute as f64);
         {
             let p = prefs.clone();
@@ -587,9 +589,7 @@ impl PreferencesPanel {
                 emit();
             });
         }
-        wpm_row.append(&wpm_lbl);
-        wpm_row.append(&wpm_spin);
-        content.append(&wpm_row);
+        append_control(&content, "Reading speed (WPM)", &wpm_spin);
 
         let fmt_dd = gtk4::DropDown::from_strings(&[
             DefaultSaveFormat::Html.label(),
@@ -624,7 +624,7 @@ impl PreferencesPanel {
             |p, v| p.include_date_in_filenames = v,
         );
 
-        let content = settings_section(&sections, &categories, "Performance");
+        let (_, content) = settings_section(&sections, "Performance");
         content.append(&sub_label("Graphics renderer (GSK)"));
 
         let renderer_group = gtk4::Box::new(gtk4::Orientation::Horizontal, 2);
@@ -676,7 +676,7 @@ impl PreferencesPanel {
         content.append(&renderer_group);
         content.append(&restart_btn);
 
-        let content = settings_section(&sections, &categories, "Extensions");
+        let (_, content) = settings_section(&sections, "Extensions");
 
         let ext_list_box = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
         populate_extensions_section(
@@ -721,31 +721,25 @@ impl PreferencesPanel {
         ext_footer.append(&btn_rescan_ext);
         content.append(&ext_footer);
 
-        let section_picker = gtk4::DropDown::new(Some(categories), gtk4::Expression::NONE);
-        section_picker.add_css_class("sillpaper-section-picker");
-        section_picker.set_tooltip_text(Some("Settings section"));
-        section_picker.connect_selected_item_notify({
-            let sections = sections.clone();
-            move |picker| {
-                if let Some(category) = picker.selected_item().and_downcast::<gtk4::StringObject>()
-                {
-                    sections.set_visible_child_name(&category.string());
-                }
-            }
-        });
-        header.append(&section_picker);
         root.append(&header);
-        root.append(&sections);
+        root.append(&scroll);
 
         Self {
             root,
             header,
+            scroll,
+            page_section,
             font_size_label,
             focus_check,
             typewriter_check,
             counter_check,
             syncing,
         }
+    }
+
+    pub(super) fn reset_to_page(&self) {
+        self.page_section.set_expanded(true);
+        self.scroll.vadjustment().set_value(0.0);
     }
 
     pub fn sync_external(&self, prefs: &Preferences) {
@@ -760,25 +754,54 @@ impl PreferencesPanel {
     }
 }
 
-fn settings_section(stack: &gtk4::Stack, categories: &gtk4::StringList, title: &str) -> gtk4::Box {
-    let group = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
-    group.add_css_class("sillpaper-settings-section");
+fn settings_section(sections: &gtk4::Box, title: &str) -> (gtk4::Expander, gtk4::Box) {
+    let content = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
+    content.add_css_class("sillpaper-settings-section");
 
-    let scroll = gtk4::ScrolledWindow::new();
-    scroll.add_css_class("sillpaper-settings-scroll");
-    scroll.set_overlay_scrolling(true);
-    scroll.set_policy(gtk4::PolicyType::Never, gtk4::PolicyType::Automatic);
-    scroll.set_child(Some(&group));
+    let section = gtk4::Expander::new(Some(title));
+    section.add_css_class("sillpaper-settings-category");
+    section.set_child(Some(&content));
+    sections.append(&section);
 
-    stack.add_named(&scroll, Some(title));
-    categories.append(title);
-    group
+    section.connect_expanded_notify(|expanded| {
+        if !expanded.is_expanded() {
+            return;
+        }
+        let Some(parent) = expanded.parent() else {
+            return;
+        };
+        let mut sibling = parent.first_child();
+        while let Some(widget) = sibling {
+            sibling = widget.next_sibling();
+            if let Ok(section) = widget.downcast::<gtk4::Expander>()
+                && section != *expanded
+            {
+                section.set_expanded(false);
+            }
+        }
+        let expanded = expanded.downgrade();
+        gtk4::glib::idle_add_local_once(move || {
+            if let Some(section) = expanded
+                .upgrade()
+                .filter(|s| s.is_expanded() && s.is_mapped())
+                && let Some(viewport) = section
+                    .ancestor(gtk4::Viewport::static_type())
+                    .and_downcast::<gtk4::Viewport>()
+                && let Some(label) = section.label_widget()
+            {
+                viewport.scroll_to(&label, None);
+            }
+        });
+    });
+
+    (section, content)
 }
 
 fn append_control(parent: &gtk4::Box, text: &str, control: &impl IsA<gtk4::Widget>) {
     let row = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
     let label = gtk4::Label::new(Some(text));
     label.set_xalign(0.0);
+    label.set_wrap(true);
     label.set_hexpand(true);
     row.append(&label);
     row.append(control);
