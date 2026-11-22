@@ -27,6 +27,15 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.1.2" date="2026-11-22">
+      <description>
+        <ul>
+          <li>Keep the selected text width centered on wide windows.</li>
+          <li>Show settings in collapsible sections.</li>
+          <li>Improve the readability of settings inputs.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.1" date="2026-11-22">
       <description>
         <p>Adds a screenshot to the app store listing.</p>
