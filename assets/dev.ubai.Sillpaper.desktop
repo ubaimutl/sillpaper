@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Sillpaper
+GenericName=Rich Text Writer
+Comment=Lightweight native distraction-free rich-text writing application
+Exec=sillpaper %U
+Icon=dev.ubai.Sillpaper
+Terminal=false
+Type=Application
+Categories=Office;WordProcessor;GTK;
+Keywords=write;writer;editor;markdown;text;notes;focus;distraction-free;
+MimeType=text/plain;text/markdown;text/html;application/vnd.openxmlformats-officedocument.wordprocessingml.document;
+StartupNotify=true
+StartupWMClass=dev.ubai.Sillpaper

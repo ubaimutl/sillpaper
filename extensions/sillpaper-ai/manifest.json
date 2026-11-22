@@ -1,0 +1,114 @@
+{
+  "id": "sillpaper-ai",
+  "name": "AI Writing Assistant",
+  "version": "0.2.0",
+  "description": "Standalone native Rust extension for inline ghost suggestions (Ctrl+Space / Tab), grammar hints (Ctrl+.), and selection rewrites (✦).",
+  "command": "./sillpaper-ai",
+  "args": [],
+  "capabilities": {
+    "completions": true,
+    "diagnostics": true,
+    "actions": [
+      {
+        "id": "correct",
+        "label": "Fix",
+        "tooltip": "Fix grammar, spelling & punctuation"
+      },
+      {
+        "id": "rewrite",
+        "label": "Rewrite",
+        "tooltip": "Improve clarity & natural flow"
+      },
+      {
+        "id": "concise",
+        "label": "Shorter",
+        "tooltip": "Tighten & make more concise"
+      },
+      {
+        "id": "ask",
+        "label": "Ask…",
+        "tooltip": "Run a custom instruction on selection",
+        "prompt_input": true
+      }
+    ]
+  },
+  "settings": [
+    {
+      "key": "provider",
+      "label": "Provider",
+      "type": "select",
+      "options": [
+        "ollama",
+        "groq",
+        "openai",
+        "gemini",
+        "openrouter",
+        "cerebras",
+        "lmstudio",
+        "cloudflare",
+        "vercel",
+        "custom"
+      ],
+      "default": "ollama"
+    },
+    {
+      "key": "api_key",
+      "label": "API Key",
+      "type": "secret",
+      "default": "",
+      "placeholder": "Paste API key (or set provider env var)",
+      "visible_when": {
+        "provider": [
+          "groq",
+          "openai",
+          "gemini",
+          "openrouter",
+          "cerebras",
+          "cloudflare",
+          "vercel",
+          "custom"
+        ]
+      }
+    },
+    {
+      "key": "account_id",
+      "label": "Cloudflare Account ID",
+      "type": "text",
+      "default": "",
+      "placeholder": "Your Cloudflare Account ID",
+      "visible_when": {
+        "provider": [
+          "cloudflare"
+        ]
+      }
+    },
+    {
+      "key": "base_url",
+      "label": "Server URL",
+      "type": "text",
+      "default": "",
+      "placeholder": "Blank = default (Ollama :11434 / LM Studio :1234)",
+      "visible_when": {
+        "provider": [
+          "ollama",
+          "lmstudio",
+          "custom"
+        ]
+      }
+    },
+    {
+      "key": "model",
+      "label": "Model (optional)",
+      "type": "text",
+      "default": "",
+      "placeholder": "Blank = recommended default for selected provider"
+    },
+    {
+      "key": "language_hint",
+      "label": "Language / Tone Hint (optional)",
+      "type": "text",
+      "default": "",
+      "placeholder": "Blank = keep document language & tone"
+    }
+  ]
+}

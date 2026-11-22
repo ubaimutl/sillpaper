@@ -1,0 +1,230 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build Linux packages (${{ matrix.arch }})
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            deb_arch: amd64
+            rpm_arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            deb_arch: arm64
+            rpm_arch: aarch64
+            runner: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux GTK4/Libadwaita & packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev \
+            libadwaita-1-dev \
+            pkg-config \
+            desktop-file-utils \
+            appstream
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            extensions/sillpaper-ai -> target
+
+      - name: Install cargo-deb & cargo-generate-rpm
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deb,cargo-generate-rpm
+
+      - name: Resolve version & validate metadata
+        id: meta
+        run: |
+          VERSION="$(grep -m1 '^version =' Cargo.toml | cut -d'"' -f2)"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="v${VERSION}"
+          fi
+          if [[ "$TAG" != "v${VERSION}" ]]; then
+            echo "Release tag $TAG does not match version $VERSION in Cargo.toml" >&2
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          desktop-file-validate assets/dev.ubai.Sillpaper.desktop
+          appstreamcli validate --no-net assets/dev.ubai.Sillpaper.metainfo.xml
+
+      - name: Build release binaries
+        run: |
+          cargo build --release --locked --bin sillpaper
+          cargo build --release --locked --manifest-path extensions/sillpaper-ai/Cargo.toml
+
+      - name: Package portable tarballs, .deb, and .rpm
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          ARCH: ${{ matrix.arch }}
+          DEB_ARCH: ${{ matrix.deb_arch }}
+          RPM_ARCH: ${{ matrix.rpm_arch }}
+        run: |
+          mkdir -p dist
+
+          STAGE="sillpaper-${TAG}-linux-${ARCH}"
+          mkdir -p "${STAGE}/assets"
+          install -Dm755 target/release/sillpaper "${STAGE}/sillpaper"
+          install -Dm644 assets/dev.ubai.Sillpaper.desktop "${STAGE}/assets/dev.ubai.Sillpaper.desktop"
+          install -Dm644 assets/dev.ubai.Sillpaper.svg "${STAGE}/assets/dev.ubai.Sillpaper.svg"
+          install -Dm644 assets/dev.ubai.Sillpaper.metainfo.xml "${STAGE}/assets/dev.ubai.Sillpaper.metainfo.xml"
+          install -Dm644 LICENSE "${STAGE}/LICENSE"
+          install -Dm644 README.md "${STAGE}/README.md"
+
+          cat > "${STAGE}/install.sh" << 'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          PREFIX="${PREFIX:-${HOME}/.local}"
+          if [[ "${1:-}" == "--system" ]]; then
+            PREFIX="/usr/local"
+          fi
+
+          install -Dm755 "${SCRIPT_DIR}/sillpaper" "${PREFIX}/bin/sillpaper"
+          install -Dm644 "${SCRIPT_DIR}/assets/dev.ubai.Sillpaper.desktop" \
+            "${PREFIX}/share/applications/dev.ubai.Sillpaper.desktop"
+          install -Dm644 "${SCRIPT_DIR}/assets/dev.ubai.Sillpaper.svg" \
+            "${PREFIX}/share/icons/hicolor/scalable/apps/dev.ubai.Sillpaper.svg"
+          install -Dm644 "${SCRIPT_DIR}/assets/dev.ubai.Sillpaper.metainfo.xml" \
+            "${PREFIX}/share/metainfo/dev.ubai.Sillpaper.metainfo.xml"
+
+          command -v update-desktop-database >/dev/null 2>&1 && \
+            update-desktop-database "${PREFIX}/share/applications" || true
+          command -v gtk-update-icon-cache >/dev/null 2>&1 && \
+            gtk-update-icon-cache -f -t "${PREFIX}/share/icons/hicolor" || true
+
+          echo "Installed Sillpaper into ${PREFIX}"
+          EOF
+          chmod 755 "${STAGE}/install.sh"
+          tar -czf "dist/${STAGE}.tar.gz" "${STAGE}"
+
+          EXT_STAGE="sillpaper-ai-${TAG}-linux-${ARCH}"
+          mkdir -p "${EXT_STAGE}"
+          install -Dm755 extensions/sillpaper-ai/target/release/sillpaper-ai "${EXT_STAGE}/sillpaper-ai"
+          install -Dm644 extensions/sillpaper-ai/manifest.json "${EXT_STAGE}/manifest.json"
+          install -Dm644 extensions/sillpaper-ai/README.md "${EXT_STAGE}/README.md"
+          install -Dm644 LICENSE "${EXT_STAGE}/LICENSE"
+
+          cat > "${EXT_STAGE}/install-extension.sh" << 'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}"
+          EXTENSIONS_DIR="${SILLPAPER_EXTENSIONS_DIR:-${STILLWRITE_EXTENSIONS_DIR:-}}"
+          if [[ -z "$EXTENSIONS_DIR" ]]; then
+            EXTENSIONS_DIR="$CONFIG_DIR/sillpaper/extensions"
+            if [[ ! -e "$EXTENSIONS_DIR" && -d "$CONFIG_DIR/stillwrite/extensions" ]]; then
+              EXTENSIONS_DIR="$CONFIG_DIR/stillwrite/extensions"
+            fi
+          fi
+          EXT_DIR="$EXTENSIONS_DIR/sillpaper-ai"
+
+          mkdir -p "${EXT_DIR}"
+          install -Dm755 "${SCRIPT_DIR}/sillpaper-ai" "${EXT_DIR}/sillpaper-ai"
+          install -Dm644 "${SCRIPT_DIR}/manifest.json" "${EXT_DIR}/manifest.json"
+
+          echo "Installed Sillpaper AI extension into ${EXT_DIR}"
+          echo "Open Sillpaper -> Settings -> Extensions to enable."
+          EOF
+          chmod 755 "${EXT_STAGE}/install-extension.sh"
+          tar -czf "dist/${EXT_STAGE}.tar.gz" "${EXT_STAGE}"
+
+          cargo deb --no-build --no-strip -o "dist/sillpaper_${VERSION}_${DEB_ARCH}.deb"
+          dpkg-deb -I "dist/sillpaper_${VERSION}_${DEB_ARCH}.deb"
+          dpkg-deb -c "dist/sillpaper_${VERSION}_${DEB_ARCH}.deb"
+
+          cargo generate-rpm -o "dist/sillpaper-${VERSION}-1.${RPM_ARCH}.rpm"
+
+          ls -lh dist/
+
+      - name: Attest public release artifacts
+        if: github.event.repository.private == false && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/*
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.arch }}
+          path: dist/*
+
+  release:
+    name: Publish GitHub Release
+    permissions:
+      contents: write
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS.txt
+        working-directory: release-assets
+        run: |
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Extract changelog section for tag
+        id: notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v ver="${VERSION}" '
+            $0 ~ "^## \\[" ver "\\]" { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+
+          if [[ ! -s release-notes.md ]]; then
+            echo "Sillpaper ${GITHUB_REF_NAME}" > release-notes.md
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release-notes.md
+          generate_release_notes: true
+          files: release-assets/*

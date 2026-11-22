@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.ubai.Sillpaper</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Sillpaper</name>
+  <summary>Distraction-free rich-text editor</summary>
+  <developer id="dev.ubai">
+    <name>Ubai</name>
+  </developer>
+  <description>
+    <p>Sillpaper is a rich-text editor for Linux. The tabs and toolbar can hide while you type. Focus Mode dims surrounding paragraphs, and Typewriter Mode keeps the current line near the center.</p>
+    <p>Use Markdown typing shortcuts, open HTML, Markdown, Word, or plain text documents, and export to Word or PDF.</p>
+  </description>
+  <launchable type="desktop-id">dev.ubai.Sillpaper.desktop</launchable>
+  <url type="homepage">https://github.com/ubaimutl/sillpaper</url>
+  <url type="bugtracker">https://github.com/ubaimutl/sillpaper/issues</url>
+  <categories>
+    <category>Office</category>
+    <category>WordProcessor</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-11-22"/>
+  </releases>
+</component>

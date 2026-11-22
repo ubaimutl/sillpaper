@@ -1,0 +1,63 @@
+[package]
+name = "sillpaper"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+authors = ["Ubai <ob.mtl97@gmail.com>"]
+description = "Lightweight, native Linux distraction-free rich-text writing application"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/ubaimutl/sillpaper"
+keywords = ["writing", "editor", "markdown", "gtk4", "distraction-free"]
+categories = ["text-editors", "gui"]
+
+[dependencies]
+gtk4 = { version = "0.10", features = ["v4_14"] }
+libadwaita = { version = "0.8", features = ["v1_5"] }
+cairo-rs = { version = "0.21", features = ["pdf", "v1_16"] }
+pangocairo = "0.21"
+pulldown-cmark = { version = "0.13", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+quick-xml = "0.42"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[package.metadata.deb]
+maintainer = "Ubai <ob.mtl97@gmail.com>"
+copyright = "2026, Ubai"
+license-file = ["LICENSE", "0"]
+extended-description = """\
+Sillpaper is a lightweight, native Linux distraction-free rich-text writing \
+application built with Rust, GTK4, and Libadwaita. Features WYSIWYG rich-text \
+editing, Markdown typing shortcuts, Focus and Typewriter modes, draft \
+recovery, and HTML, Markdown, Word (.docx), and PDF exports."""
+depends = "$auto, hicolor-icon-theme"
+section = "editors"
+priority = "optional"
+assets = [
+    ["target/release/sillpaper", "usr/bin/sillpaper", "755"],
+    ["assets/dev.ubai.Sillpaper.desktop", "usr/share/applications/dev.ubai.Sillpaper.desktop", "644"],
+    ["assets/dev.ubai.Sillpaper.svg", "usr/share/icons/hicolor/scalable/apps/dev.ubai.Sillpaper.svg", "644"],
+    ["assets/dev.ubai.Sillpaper.metainfo.xml", "usr/share/metainfo/dev.ubai.Sillpaper.metainfo.xml", "644"],
+]
+
+[package.metadata.generate-rpm]
+auto-req = "disabled"
+assets = [
+    { source = "target/release/sillpaper", dest = "/usr/bin/sillpaper", mode = "755" },
+    { source = "assets/dev.ubai.Sillpaper.desktop", dest = "/usr/share/applications/dev.ubai.Sillpaper.desktop", mode = "644" },
+    { source = "assets/dev.ubai.Sillpaper.svg", dest = "/usr/share/icons/hicolor/scalable/apps/dev.ubai.Sillpaper.svg", mode = "644" },
+    { source = "assets/dev.ubai.Sillpaper.metainfo.xml", dest = "/usr/share/metainfo/dev.ubai.Sillpaper.metainfo.xml", mode = "644" },
+    { source = "LICENSE", dest = "/usr/share/licenses/sillpaper/LICENSE", mode = "644", doc = true },
+]
+
+[package.metadata.generate-rpm.requires]
+gtk4 = ">= 4.14"
+libadwaita = ">= 1.5"
+hicolor-icon-theme = "*"

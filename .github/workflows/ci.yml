@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check-and-test:
+    name: Lint, Test & Validate Metadata
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux GTK4/Libadwaita & validation dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev \
+            libadwaita-1-dev \
+            pkg-config \
+            desktop-file-utils \
+            appstream \
+            xvfb \
+            xauth \
+            dbus-x11 \
+            fonts-dejavu-core
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            extensions/sillpaper-ai -> target
+
+      - name: Validate Desktop Entry & AppStream Metainfo
+        run: |
+          desktop-file-validate assets/dev.ubai.Sillpaper.desktop
+          appstreamcli validate --no-net assets/dev.ubai.Sillpaper.metainfo.xml
+
+      - name: Clippy (core)
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Clippy (sillpaper-ai extension)
+        working-directory: extensions/sillpaper-ai
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Run unit, I/O, and live GTK4 tests
+        run: xvfb-run -a dbus-run-session -- env GDK_BACKEND=x11 GSK_RENDERER=cairo GTK_A11Y=none cargo test --locked -- --nocapture
