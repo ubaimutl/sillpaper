@@ -20,7 +20,18 @@
     <category>WordProcessor</category>
   </categories>
   <content_rating type="oars-1.1"/>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/ubaimutl/sillpaper/5fb1b677e11c986741b8535e6ed319d567345734/docs/screenshots/hero-editor.jpg</image>
+      <caption>Formatting selected text</caption>
+    </screenshot>
+  </screenshots>
   <releases>
+    <release version="0.1.1" date="2026-11-22">
+      <description>
+        <p>Adds a screenshot to the app store listing.</p>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-11-22"/>
   </releases>
 </component>
