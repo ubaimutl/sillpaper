@@ -3,6 +3,7 @@ pub mod docx;
 pub mod html;
 pub mod markdown;
 pub mod print;
+pub(crate) mod remote_image;
 
 use crate::config::Preferences;
 use crate::model::{Block, BlockKind, Document, Inline, TextRun};

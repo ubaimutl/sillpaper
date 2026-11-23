@@ -22,6 +22,10 @@ pub enum BufferPatch {
         old_count: usize,
         new_count: usize,
     },
+    RestyleBlocks {
+        start_block: usize,
+        count: usize,
+    },
     FullReload,
 }
 
@@ -986,7 +990,16 @@ impl EditorState {
             }
         }
 
-        self.apply_block_splice(s.block, old_blocks, new_blocks, before_sel, before_sel)
+        let patch =
+            self.apply_block_splice(s.block, old_blocks, new_blocks, before_sel, before_sel);
+        if target == BlockKind::HorizontalRule {
+            patch
+        } else {
+            BufferPatch::RestyleBlocks {
+                start_block: s.block,
+                count: e.block - s.block + 1,
+            }
+        }
     }
 
     pub fn adjust_list_indent(&mut self, increase: bool) -> Option<BufferPatch> {

@@ -492,6 +492,16 @@ impl EditorTab {
                 self.sync_selection_to_buffer();
                 self.is_syncing.set(false);
             }
+            BufferPatch::RestyleBlocks { start_block, count } => {
+                let buffer = self.view.buffer();
+                let doc_blocks = self.state.borrow().doc.blocks.clone();
+                self.is_syncing.set(true);
+                for (index, block) in doc_blocks.iter().enumerate().skip(start_block).take(count) {
+                    self.apply_block_tags(&buffer, index, block);
+                }
+                self.sync_decorations(&doc_blocks);
+                self.is_syncing.set(false);
+            }
             BufferPatch::SpliceBlocks {
                 start_block,
                 old_count,
@@ -1528,16 +1538,8 @@ impl EditorTab {
             return;
         };
         let tab_c = self.clone();
-        show_image_url_dialog(&win, move |url| {
-            let patch = tab_c
-                .state
-                .borrow_mut()
-                .insert_inline_object(Inline::Image {
-                    src: url,
-                    alt: String::new(),
-                    original_src: None,
-                });
-            tab_c.apply_patch(patch);
+        show_image_url_dialog(&win, move |bytes| {
+            tab_c.insert_image_bytes(bytes, "");
             tab_c.focus_editor();
         });
     }
@@ -1961,24 +1963,67 @@ impl EditorTab {
         self.storage.remove_tab_backup(&self.id);
     }
 
+    fn link_at(&self, x: f64, y: f64) -> Option<String> {
+        let (x, y) =
+            self.view
+                .window_to_buffer_coords(gtk4::TextWindowType::Widget, x as i32, y as i32);
+        let iter = self.view.iter_at_location(x, y)?;
+        let block = iter.line().max(0) as usize;
+        let offset = iter.line_offset().max(0) as usize;
+        let state = self.state.borrow();
+        let block = state.doc.blocks.get(block)?;
+        if offset < block.char_len() {
+            block.style_at(offset + 1).link
+        } else {
+            None
+        }
+    }
+
+    fn hide_link_pill(&self) {
+        *self.hovered_link.borrow_mut() = None;
+        self.link_pill.set_visible(false);
+    }
+
     fn activate_link(&self, url: &str) {
+        self.hide_link_pill();
         if let Some(slug) = url.strip_prefix('#') {
             let target_slug = slug.to_lowercase();
-            let blocks = &self.state.borrow().doc.blocks;
-            for (i, b) in blocks.iter().enumerate() {
-                if b.kind.is_heading() && heading_slug(&b.plain_text()) == target_slug {
-                    self.scroll_to_block(i);
-                    return;
-                }
+            let target = self.state.borrow().doc.blocks.iter().position(|block| {
+                block.kind.is_heading() && heading_slug(&block.plain_text()) == target_slug
+            });
+            if let Some(index) = target {
+                self.scroll_to_block(index);
+            } else {
+                (self.callbacks.on_toast)("Linked heading not found");
             }
             return;
         }
-        if let Some(win) = (self.callbacks.get_window)() {
-            let launcher = gtk4::UriLauncher::new(url);
-            launcher.launch(Some(&win), gio::Cancellable::NONE, |_| {});
-        } else {
-            let _ = gio::AppInfo::launch_default_for_uri(url, gio::AppLaunchContext::NONE);
-        }
+
+        let window = (self.callbacks.get_window)();
+        let launch_context = self.view.display().app_launch_context();
+        let on_toast = self.callbacks.on_toast.clone();
+        let url = url.to_owned();
+        let launcher = gtk4::UriLauncher::new(&url);
+        launcher.launch(window.as_ref(), gio::Cancellable::NONE, move |result| {
+            let Err(error) = result else { return };
+            if error.matches(gtk4::DialogError::Dismissed)
+                || error.matches(gtk4::DialogError::Cancelled)
+                || error.matches(gio::IOErrorEnum::Cancelled)
+            {
+                return;
+            }
+
+            gio::AppInfo::launch_default_for_uri_async(
+                &url,
+                Some(&launch_context),
+                gio::Cancellable::NONE,
+                move |result| {
+                    if result.is_err() {
+                        on_toast("Could not open link");
+                    }
+                },
+            );
+        });
     }
 
     fn wire_events(&self) {
@@ -2123,7 +2168,8 @@ impl EditorTab {
         {
             let tab_c = self.clone();
             self.link_pill.connect_clicked(move |_| {
-                if let Some(url) = tab_c.hovered_link.borrow().clone() {
+                let url = tab_c.hovered_link.borrow_mut().take();
+                if let Some(url) = url {
                     tab_c.activate_link(&url);
                 }
             });
@@ -2247,6 +2293,7 @@ impl EditorTab {
                 if tab_c.is_syncing.get() {
                     return;
                 }
+                tab_c.hide_link_pill();
                 let pos = if tab_c.pending_smart_sync.get() > 0 {
                     tab_c.state.borrow().selection.focus
                 } else {
@@ -2555,35 +2602,15 @@ impl EditorTab {
             let motion = gtk4::EventControllerMotion::new();
             let tab_c = self.clone();
             motion.connect_motion(move |_, x, y| {
-                let (bx, by) = tab_c.view.window_to_buffer_coords(
-                    gtk4::TextWindowType::Widget,
-                    x as i32,
-                    y as i32,
-                );
-                let found_url = tab_c.view.iter_at_location(bx, by).and_then(|iter| {
-                    let b_idx = iter.line().max(0) as usize;
-                    let off = iter.line_offset().max(0) as usize;
-                    let st = tab_c.state.borrow();
-                    let block = st.doc.blocks.get(b_idx)?;
-                    if off < block.char_len() {
-                        block.style_at(off + 1).link
-                    } else {
-                        None
-                    }
-                });
-
-                if let Some(url) = found_url {
-                    let display = if url.len() > 42 {
-                        format!("Open {}… ↗", &url[..40])
+                if let Some(url) = tab_c.link_at(x, y) {
+                    let display = if let Some((end, _)) = url.char_indices().nth(42) {
+                        format!("Open {}… ↗", &url[..end])
                     } else {
                         format!("Open {url} ↗")
                     };
                     tab_c.link_pill.set_label(&display);
                     tab_c.link_pill.set_visible(true);
                     *tab_c.hovered_link.borrow_mut() = Some(url);
-                } else if tab_c.hovered_link.borrow().is_some() {
-                    tab_c.link_pill.set_visible(false);
-                    *tab_c.hovered_link.borrow_mut() = None;
                 }
             });
             self.view.add_controller(motion);
@@ -2599,7 +2626,7 @@ impl EditorTab {
                         if let Some(btn_ev) = ev.downcast_ref::<gdk::ButtonEvent>()
                             && btn_ev.button() == 1
                         {
-                            tab_ev.is_mouse_selecting.set(true);
+                            tab_ev.hide_link_pill();
                             (tab_ev.callbacks.on_hide_toolbar)();
                             tab_ev.view.remove_css_class("hide-caret-active");
 
@@ -2607,28 +2634,23 @@ impl EditorTab {
                                 .modifier_state()
                                 .contains(gdk::ModifierType::CONTROL_MASK)
                                 && let Some((x, y)) = ev.position()
+                                && let Some(native) = tab_ev.view.native()
                             {
-                                let (bx, by) = tab_ev.view.window_to_buffer_coords(
-                                    gtk4::TextWindowType::Widget,
-                                    x as i32,
-                                    y as i32,
-                                );
-                                if let Some(iter) = tab_ev.view.iter_at_location(bx, by) {
-                                    let b_idx = iter.line().max(0) as usize;
-                                    let off = iter.line_offset().max(0) as usize;
-                                    let url =
-                                        tab_ev.state.borrow().doc.blocks.get(b_idx).and_then(|b| {
-                                            if off < b.char_len() {
-                                                b.style_at(off + 1).link
-                                            } else {
-                                                None
-                                            }
-                                        });
-                                    if let Some(u) = url {
-                                        tab_ev.activate_link(&u);
-                                    }
+                                let (dx, dy) = native.surface_transform();
+                                let surface_point =
+                                    gtk4::graphene::Point::new((x + dx) as f32, (y + dy) as f32);
+                                if let Some(widget) = native.dynamic_cast_ref::<gtk4::Widget>()
+                                    && let Some(point) =
+                                        widget.compute_point(&tab_ev.view, &surface_point)
+                                    && let Some(url) =
+                                        tab_ev.link_at(point.x().into(), point.y().into())
+                                {
+                                    tab_ev.activate_link(&url);
+                                    return glib::Propagation::Stop;
                                 }
                             }
+
+                            tab_ev.is_mouse_selecting.set(true);
                         }
                     }
                     gdk::EventType::ButtonRelease => {
@@ -2684,6 +2706,14 @@ impl EditorTab {
     fn show_context_menu(&self, x: i32, y: i32) {
         let menu = gio::Menu::new();
         let has_sel = !self.state.borrow().selection.is_collapsed();
+        let link = self.link_at(x.into(), y.into());
+        self.hide_link_pill();
+
+        if link.is_some() {
+            let section = gio::Menu::new();
+            section.append(Some("Open Link"), Some("ctx.open-link"));
+            menu.append_section(None, &section);
+        }
 
         let sec_undo = gio::Menu::new();
         sec_undo.append(Some("Undo"), Some("ctx.undo"));
@@ -2719,7 +2749,7 @@ impl EditorTab {
         let sec_insert = gio::Menu::new();
         sec_insert.append(Some("Insert Comment"), Some("ctx.comment"));
         sec_insert.append(Some("Insert Picture from File…"), Some("ctx.img-file"));
-        sec_insert.append(Some("Link Picture from URL…"), Some("ctx.img-url"));
+        sec_insert.append(Some("Insert Picture from URL…"), Some("ctx.img-url"));
         sec_insert.append(Some("Insert Horizontal Rule"), Some("ctx.hr"));
         menu.append_section(None, &sec_insert);
 
@@ -2740,6 +2770,11 @@ impl EditorTab {
         let can_undo = st.undo.can_undo();
         let can_redo = st.undo.can_redo();
         drop(st);
+
+        if let Some(url) = link {
+            let t = self.clone();
+            add_act("open-link", true, Box::new(move || t.activate_link(&url)));
+        }
 
         let t = self.clone();
         add_act("undo", can_undo, Box::new(move || t.undo()));
@@ -2818,9 +2853,10 @@ impl EditorTab {
         pop.set_parent(&self.view);
         pop.set_has_arrow(false);
         pop.set_pointing_to(Some(&gdk::Rectangle::new(x, y, 1, 1)));
-        let pop_c = pop.clone();
-        pop.connect_closed(move |_| {
-            pop_c.unparent();
+        pop.connect_closed(|popover| {
+            // GTK closes the popover before dispatching the selected action.
+            let popover = popover.clone();
+            glib::idle_add_local_once(move || popover.unparent());
         });
         pop.popup();
     }

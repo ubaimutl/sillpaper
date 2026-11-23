@@ -1164,15 +1164,11 @@ impl SillpaperWindow {
                 ToolbarAction::Italic => active.toggle_inline(InlineAttr::Italic),
                 ToolbarAction::Underline => active.toggle_inline(InlineAttr::Underline),
                 ToolbarAction::Strikethrough => active.toggle_inline(InlineAttr::Strikethrough),
-                ToolbarAction::OpenLink => {
-                    sw_c.open_toolbar_link_editor();
-                    return;
-                }
+                ToolbarAction::OpenLink => sw_c.open_toolbar_link_editor(),
                 ToolbarAction::SetLink(url) => {
                     active.commit_pending_link(url);
                     sw_c.hide_floating_toolbar();
                     sw_c.focus_active_editor();
-                    return;
                 }
                 ToolbarAction::Blockquote => active.toggle_block(BlockKind::Blockquote),
                 ToolbarAction::BulletList => {
@@ -1188,7 +1184,6 @@ impl SillpaperWindow {
                     label,
                 } => {
                     sw_c.open_toolbar_extension_prompt(ext_id, action_id, label);
-                    return;
                 }
                 ToolbarAction::RunExtensionAction {
                     ext_id,
@@ -1202,10 +1197,8 @@ impl SillpaperWindow {
                         &label,
                         prompt.as_deref(),
                     );
-                    return;
                 }
             }
-            sw_c.update_floating_toolbar();
         });
         let sw_f = self.clone();
         self.floating_toolbar.set_on_return_focus(move || {

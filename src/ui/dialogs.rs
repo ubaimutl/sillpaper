@@ -194,11 +194,12 @@ pub fn show_comment_dialog(
     tv.grab_focus();
 }
 
-pub fn show_image_url_dialog(parent: &impl IsA<gtk4::Window>, on_url: impl Fn(String) + 'static) {
+pub fn show_image_url_dialog(parent: &impl IsA<gtk4::Window>, on_image: impl Fn(&[u8]) + 'static) {
     let win = gtk4::Window::builder()
         .transient_for(parent)
         .modal(true)
-        .title("Link Picture from URL")
+        .destroy_with_parent(true)
+        .title("Insert Picture from URL")
         .default_width(420)
         .resizable(false)
         .build();
@@ -213,6 +214,12 @@ pub fn show_image_url_dialog(parent: &impl IsA<gtk4::Window>, on_url: impl Fn(St
     entry.set_placeholder_text(Some("https://example.com/image.png"));
     vbox.append(&entry);
 
+    let status = gtk4::Label::new(None);
+    status.set_wrap(true);
+    status.set_xalign(0.0);
+    status.set_visible(false);
+    vbox.append(&status);
+
     let btn_row = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
     btn_row.set_halign(gtk4::Align::End);
     let btn_cancel = gtk4::Button::with_label("Cancel");
@@ -222,17 +229,55 @@ pub fn show_image_url_dialog(parent: &impl IsA<gtk4::Window>, on_url: impl Fn(St
     btn_row.append(&btn_ok);
     vbox.append(&btn_row);
 
-    let cb = std::rc::Rc::new(on_url);
+    let on_image = std::rc::Rc::new(on_image);
     let submit = {
-        let e = entry.clone();
-        let w = win.clone();
-        let cb = cb.clone();
+        let entry = entry.clone();
+        let button = btn_ok.clone();
+        let status = status.clone();
+        let window = win.downgrade();
         move || {
-            let url = e.text().trim().to_string();
-            if !url.is_empty() {
-                cb(url);
+            let url = entry.text().trim().to_string();
+            if !button.is_sensitive() {
+                return;
             }
-            w.close();
+            if url.is_empty() {
+                status.set_label("Enter an image URL.");
+                status.set_visible(true);
+                return;
+            }
+
+            entry.set_editable(false);
+            button.set_sensitive(false);
+            status.set_label("Downloading image…");
+            status.set_visible(true);
+            let (entry, button, status, window, on_image) = (
+                entry.clone(),
+                button.clone(),
+                status.clone(),
+                window.clone(),
+                on_image.clone(),
+            );
+            glib::spawn_future_local(async move {
+                let result =
+                    gtk4::gio::spawn_blocking(move || crate::io::remote_image::download_png(&url))
+                        .await
+                        .unwrap_or(Err("Could not prepare the image for insertion."));
+                let Some(window) = window.upgrade().filter(|window| window.is_visible()) else {
+                    return;
+                };
+                match result {
+                    Ok(bytes) => {
+                        window.close();
+                        on_image(&bytes);
+                    }
+                    Err(error) => {
+                        status.set_label(error);
+                        entry.set_editable(true);
+                        button.set_sensitive(true);
+                        entry.grab_focus();
+                    }
+                }
+            });
         }
     };
 

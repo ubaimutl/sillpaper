@@ -205,6 +205,85 @@ fn test_gtk_editor_tab_sync_formatting_focus_search_and_large_doc() {
     assert!(it0.has_tag(&sb.tag_table().lookup("bold").unwrap()));
     assert!(it0.has_tag(&sb.tag_table().lookup("italic").unwrap()));
 
+    let context = gtk4::glib::MainContext::default();
+    let type_text = |tab: &EditorTab, input: &str| {
+        let buffer = tab.view.buffer();
+        for ch in input.chars() {
+            buffer.insert_at_cursor(&ch.to_string());
+            while context.iteration(false) {}
+        }
+    };
+    for (input, kind, text) in [
+        ("#Heading", BlockKind::Heading(1), "Heading"),
+        ("# Heading", BlockKind::Heading(1), "Heading"),
+        ("##Heading", BlockKind::Heading(2), "Heading"),
+        ("### Heading", BlockKind::Heading(3), "Heading"),
+        ("* First", BlockKind::BulletListItem { depth: 0 }, "First"),
+        ("- Second", BlockKind::BulletListItem { depth: 0 }, "Second"),
+        (
+            "1. Item",
+            BlockKind::OrderedListItem {
+                depth: 0,
+                number: 1,
+            },
+            "Item",
+        ),
+        ("> Quote", BlockKind::Blockquote, "Quote"),
+    ] {
+        let tab = make_tab(
+            Document::new_empty(TextDirection::Auto),
+            Preferences::default(),
+        );
+        type_text(&tab, input);
+        let state = tab.state.borrow();
+        assert_eq!(state.doc.blocks[0].kind, kind, "{input:?}");
+        assert_eq!(state.doc.blocks[0].plain_text(), text, "{input:?}");
+        let buffer = tab.view.buffer();
+        assert_eq!(
+            buffer.text(&buffer.start_iter(), &buffer.end_iter(), false),
+            text
+        );
+    }
+
+    let heading_tab = make_tab(
+        Document::new_empty(TextDirection::Auto),
+        Preferences::default(),
+    );
+    type_text(&heading_tab, "#Heading");
+    let heading_buffer = heading_tab.view.buffer();
+    heading_buffer.select_range(&heading_buffer.end_iter(), &heading_buffer.start_iter());
+    let buffer_changes = Rc::new(std::cell::Cell::new(0));
+    heading_buffer.connect_changed({
+        let buffer_changes = buffer_changes.clone();
+        move |_| buffer_changes.set(buffer_changes.get() + 1)
+    });
+    heading_tab.toggle_block(BlockKind::Heading(2));
+    assert_eq!(
+        heading_tab.state.borrow().doc.blocks[0].kind,
+        BlockKind::Heading(2)
+    );
+    assert_eq!(
+        buffer_changes.get(),
+        0,
+        "Heading changes should preserve the buffer text"
+    );
+    assert!(
+        heading_buffer
+            .start_iter()
+            .has_tag(&heading_buffer.tag_table().lookup("h2").unwrap())
+    );
+    let (selection_start, selection_end) = heading_buffer.selection_bounds().unwrap();
+    assert_eq!(
+        heading_buffer.text(&selection_start, &selection_end, false),
+        "Heading"
+    );
+    let undo = heading_tab.state.borrow_mut().undo();
+    heading_tab.apply_patch(undo);
+    assert_eq!(
+        heading_tab.state.borrow().doc.blocks[0].kind,
+        BlockKind::Heading(1)
+    );
+
     let narrow_prefs = Preferences {
         text_width: sillpaper::config::TextWidth::Narrow,
         ..Default::default()
