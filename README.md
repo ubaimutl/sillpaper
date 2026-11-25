@@ -112,18 +112,18 @@ Other shortcuts are available through the in-app reference.
 
 ## Installation
 
-Download a package from [GitHub Releases](https://github.com/ubaimutl/sillpaper/releases/latest). Choose `amd64` / `x86_64` for 64-bit Intel or AMD, or `arm64` / `aarch64` for ARM64. The commands below use the x86-64 files from v0.1.2.
+Download a package from [GitHub Releases](https://github.com/ubaimutl/sillpaper/releases/latest). Choose `amd64` / `x86_64` for 64-bit Intel or AMD, or `arm64` / `aarch64` for ARM64. The commands below use the x86-64 files from v0.1.3.
 
 **Ubuntu / Debian (`.deb`)**
 
 ```bash
-sudo apt install ./sillpaper_0.1.2_amd64.deb
+sudo apt install ./sillpaper_0.1.3_amd64.deb
 ```
 
 **Fedora (`.rpm`)**
 
 ```bash
-sudo dnf install ./sillpaper-0.1.2-1.x86_64.rpm
+sudo dnf install ./sillpaper-0.1.3-1.x86_64.rpm
 ```
 
 **Portable archive (`.tar.gz`)**
@@ -131,8 +131,8 @@ sudo dnf install ./sillpaper-0.1.2-1.x86_64.rpm
 The prebuilt archive needs a compatible Linux runtime with GTK 4.14 or newer and libadwaita 1.5 or newer. Extract it and run Sillpaper directly.
 
 ```bash
-tar -xzf sillpaper-v0.1.2-linux-x86_64.tar.gz
-cd sillpaper-v0.1.2-linux-x86_64
+tar -xzf sillpaper-v0.1.3-linux-x86_64.tar.gz
+cd sillpaper-v0.1.3-linux-x86_64
 ./sillpaper
 ```
 
